@@ -33,14 +33,24 @@ _YES_PRICE_EXPR = "COALESCE(t.yes_price_dollars * 100.0, t.yes_price)"
 _COUNT_EXPR = "COALESCE(t.count_fp, t.count)"
 
 
-def _vwap_columns() -> str:
-    """Build the VWAP SELECT expressions for every interval."""
+def _vwap_columns(anchor: str = "lt.last_trade_time") -> str:
+    """Build the VWAP SELECT expressions for every interval.
+
+    Parameters
+    ----------
+    anchor : str
+        SQL expression for the time anchor. Defaults to ``lt.last_trade_time``
+        (the per-ticker last trade timestamp), which is the correct anchor for
+        measuring "N hours before trading stopped."  Previously this was
+        ``m.close_time`` (settlement time), which could be hours after the last
+        trade and caused all VWAP horizons to collapse to the same value.
+    """
     parts = []
     for label, interval in _INTERVAL_SQL.items():
         parts.append(
-            f"SUM(CASE WHEN t.created_time <= m.close_time - {interval} "
+            f"SUM(CASE WHEN t.created_time <= {anchor} - {interval} "
             f"THEN {_YES_PRICE_EXPR} * {_COUNT_EXPR} ELSE 0 END) / "
-            f"NULLIF(SUM(CASE WHEN t.created_time <= m.close_time - {interval} "
+            f"NULLIF(SUM(CASE WHEN t.created_time <= {anchor} - {interval} "
             f"THEN {_COUNT_EXPR} ELSE 0 END), 0) AS vwap_{label}"
         )
     return ",\n        ".join(parts)
@@ -66,14 +76,21 @@ def load_mention_markets(
     Returns
     -------
     pd.DataFrame with columns: ticker, title, result, series,
-        close_time, vwap_7d … vwap_10m, total_volume.
+        close_time, last_trade_time, vwap_7d … vwap_10m, total_volume.
+
+        ``last_trade_time`` is the timestamp of the final recorded trade for
+        each market.  All VWAP horizons are anchored to this timestamp rather
+        than ``close_time`` (settlement time), so ``vwap_2h`` truly means
+        "the VWAP of trades that occurred more than 2 hours before the last
+        trade."
     """
     con = duckdb.connect()
 
     series_clause = ""
     if series_filter:
         quoted = ", ".join(f"'{s}'" for s in series_filter)
-        series_clause = f"AND m.series IN ({quoted})"
+        # Note: no table alias here — we're inside the market_base CTE
+        series_clause = f"AND series IN ({quoted})"
 
     sql = f"""
     WITH market_base AS (
@@ -87,13 +104,29 @@ def load_mention_markets(
         WHERE result IN ('yes', 'no')
           {series_clause}
     ),
+    -- Compute the last trade timestamp per ticker.
+    -- We anchor all VWAP windows to this rather than close_time (settlement),
+    -- because close_time can be 60+ minutes after the final trade, causing
+    -- all short-horizon VWAPs to collapse to the same value.
+    last_trade AS (
+        SELECT
+            t.ticker,
+            MAX(t.created_time) AS last_trade_time
+        FROM read_parquet('{trades_glob}', union_by_name=true) t
+        INNER JOIN market_base m ON t.ticker = m.ticker
+        WHERE ({_YES_PRICE_EXPR}) IS NOT NULL
+          AND ({_COUNT_EXPR}) IS NOT NULL
+          AND ({_COUNT_EXPR}) > 0
+        GROUP BY t.ticker
+    ),
     vwaps AS (
         SELECT
             t.ticker,
-            {_vwap_columns()},
+            {_vwap_columns("lt.last_trade_time")},
             SUM({_COUNT_EXPR}) AS total_volume
         FROM read_parquet('{trades_glob}', union_by_name=true) t
         INNER JOIN market_base m ON t.ticker = m.ticker
+        INNER JOIN last_trade lt ON t.ticker = lt.ticker
         WHERE ({_YES_PRICE_EXPR}) IS NOT NULL
           AND ({_COUNT_EXPR}) IS NOT NULL
           AND ({_COUNT_EXPR}) > 0
@@ -105,6 +138,7 @@ def load_mention_markets(
         m.result,
         m.series,
         m.close_time,
+        lt.last_trade_time,
         v.vwap_7d,
         v.vwap_3d,
         v.vwap_1d,
@@ -115,6 +149,7 @@ def load_mention_markets(
         v.vwap_10m,
         v.total_volume
     FROM market_base m
+    INNER JOIN last_trade lt ON m.ticker = lt.ticker
     INNER JOIN vwaps v ON m.ticker = v.ticker
     """
     df = con.execute(sql).df()
