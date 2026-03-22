@@ -112,40 +112,68 @@ def strategy_profits(
     price_col: str = "vwap_2h",
     actual_col: str = "actual_yes",
     thresholds: list[int] | None = None,
+    side: str = "yes",
 ) -> pd.DataFrame:
-    """Compute trade counts and profit % for threshold strategies.
+    """Compute trade counts and profit per trade for threshold strategies.
 
-    For each threshold t, the strategy buys YES when price > t.
-    Returns a DataFrame with one row per threshold.
+    Parameters
+    ----------
+    side : "yes" or "no"
+        - "yes": buy YES when price > threshold (bet the word IS mentioned)
+        - "no":  buy NO when price < threshold (bet the word is NOT mentioned)
     """
     if thresholds is None:
         thresholds = [60, 70, 80, 90]
 
     rows = []
     for t in thresholds:
-        eligible = df[df[price_col] > t].copy()
+        if side == "no":
+            eligible = df[df[price_col] < t].copy()
+        else:
+            eligible = df[df[price_col] > t].copy()
+
         if eligible.empty:
-            rows.append({"threshold": t, "trades": 0, "gross_return": 0.0, "net_return": 0.0})
+            rows.append({
+                "threshold": t, "trades": 0,
+                "gross_pnl_per_trade": 0.0, "net_pnl_per_trade": 0.0,
+                "gross_return": 0.0, "net_return": 0.0, "hit_rate": 0.0,
+            })
             continue
 
         prices = eligible[price_col].values
         won = eligible[actual_col].values.astype(float)
-        fees = np.array([kalshi_fee(p) for p in prices])
 
-        cost = prices + fees
-        payout = won * 100.0
+        if side == "no":
+            # Buy NO at (100 - price) cents; win if outcome is NO (won == 0)
+            entry_prices = 100.0 - prices
+            payouts = (1.0 - won) * 100.0
+        else:
+            # Buy YES at price cents; win if outcome is YES (won == 1)
+            entry_prices = prices.copy()
+            payouts = won * 100.0
+
+        fees = np.array([kalshi_fee(p) for p in entry_prices])
+        cost = entry_prices + fees
+        gross_cost = entry_prices.sum()
         total_cost = cost.sum()
-        total_payout = payout.sum()
-        gross_cost = prices.sum()
+        total_payout = payouts.sum()
 
         gross_return = (total_payout - gross_cost) / gross_cost if gross_cost > 0 else 0.0
         net_return = (total_payout - total_cost) / total_cost if total_cost > 0 else 0.0
 
+        n = len(eligible)
+        gross_pnl = (total_payout - gross_cost) / n
+        net_pnl = (total_payout - total_cost) / n
+        hit_rate = (payouts > 0).mean()
+
         rows.append({
             "threshold": t,
-            "trades": len(eligible),
+            "trades": n,
+            "gross_pnl_per_trade": gross_pnl,
+            "net_pnl_per_trade": net_pnl,
             "gross_return": gross_return,
             "net_return": net_return,
+            "hit_rate": hit_rate,
         })
 
     return pd.DataFrame(rows)
