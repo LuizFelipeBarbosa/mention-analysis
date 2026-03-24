@@ -123,7 +123,10 @@ def strategy_profits(
         - "no":  buy NO when price < threshold (bet the word is NOT mentioned)
     """
     if thresholds is None:
-        thresholds = [60, 70, 80, 90]
+        if side == "no":
+            thresholds = [0, 10, 20, 30, 40]
+        else:
+            thresholds = [60, 70, 80, 90, 100]
 
     rows = []
     for t in thresholds:
