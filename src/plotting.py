@@ -191,6 +191,73 @@ def plot_faceted_calibration(
     return fig
 
 
+def plot_calibration_panel(
+    group_df: pd.DataFrame,
+    group_name: str,
+    total_contracts: int,
+    accuracy: float,
+    intervals: list[str],
+    bin_size: int = 10,
+) -> plt.Figure:
+    """Create a single calibration chart for one bucket granularity.
+
+    Unlike ``plot_faceted_calibration`` which stacks three bucket sizes into
+    one figure, this produces one standalone figure per bucket size with
+    cleaner axes (0-100 % on both axes, true diagonal).
+    """
+    from src.metrics import calibration_buckets  # avoid circular import
+
+    n_bins = int(100 / bin_size)
+    midpoints = np.linspace(bin_size / 2, 100 - bin_size / 2, n_bins)
+
+    cmap = plt.get_cmap("viridis_r")
+    colors = [cmap(v) for v in np.linspace(0.1, 0.9, len(intervals))]
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    # Perfect calibration diagonal
+    ax.plot([0, 100], [0, 100], color="black", linestyle="--", linewidth=1.5,
+            label="Perfect Calibration", zorder=1)
+
+    for j, interval in enumerate(intervals):
+        col = f"vwap_{interval}"
+        cal = calibration_buckets(group_df, col, bin_size=bin_size)
+        y = cal["actual_yes_pct"].fillna(np.nan) * 100
+        marker = "" if bin_size == 1 else "o"
+        lw = 1.2 if bin_size == 1 else 2
+        ax.plot(midpoints, y, marker=marker, color=colors[j], linewidth=lw,
+                label=f"{interval} VWAP", zorder=2)
+
+        # Annotate sample sizes on the 2h line for coarser buckets
+        if interval == "2h" and bin_size >= 5:
+            for k, val in enumerate(y):
+                if not np.isnan(val):
+                    n_count = cal.iloc[k]["n"]
+                    if n_count > 0:
+                        ax.text(midpoints[k], val + 2.5, f"n={n_count}",
+                                ha="center", va="bottom", fontsize=8,
+                                color=C_GRAY)
+
+    # Clean percentage axes
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 100)
+    ax.set_xticks(np.arange(0, 101, 10))
+    ax.set_yticks(np.arange(0, 101, 10))
+    ax.set_xticklabels([f"{t}%" for t in range(0, 101, 10)], fontsize=10)
+    ax.set_yticklabels([f"{t}%" for t in range(0, 101, 10)], fontsize=10)
+    ax.set_xlabel("Implied Probability", fontsize=11)
+    ax.set_ylabel("Actual YES Resolution Rate", fontsize=11)
+    ax.set_title(
+        f"{group_name} \u2014 {bin_size}\u00a2 Buckets\n"
+        f"{total_contracts:,} contracts  |  {accuracy * 100:.1f}% directional accuracy",
+        fontsize=13, fontweight="bold",
+    )
+    ax.legend(loc="upper left", fontsize=9, framealpha=0.9)
+    ax.grid(True, linestyle="--", alpha=0.3)
+    fig.tight_layout()
+    return fig
+
+
 def plot_mad_summary(
     mad_over_time: dict[str, list[float]],
     intervals: list[str],
