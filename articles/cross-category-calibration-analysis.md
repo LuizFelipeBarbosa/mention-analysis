@@ -253,3 +253,5 @@ Whelan, K. (2024). "Risk Aversion and Favourite–Longshot Bias in a Competitive
 Wolfers, J. and Zitzewitz, E. (2004). "Prediction Markets." *Journal of Economic Perspectives*, 18(2), 107–126.
 
 Wolfers, J. and Zitzewitz, E. (2006). "Interpreting Prediction Market Prices as Probabilities." NBER Working Paper No. 12200.
+
+Barbosa, L. F. (2026). *mention-analysis* [Computer software]. GitHub. https://github.com/LuizFelipeBarbosa/mention-analysis
