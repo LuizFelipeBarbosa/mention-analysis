@@ -14,7 +14,7 @@ Calibration analysis and trading strategy evaluation for Kalshi mention markets 
 Data lives on an external drive and is symlinked into the repo:
 
 ```
-data -> /Volumes/T7/mention-markets/raw/
+data -> /Volumes/T7/mention-markets
 ├── trades/    # Per-series parquet files (141 series, ~7.6M trades)
 └── markets/   # Per-series parquet files (market metadata + outcomes)
 ```
@@ -32,6 +32,13 @@ data -> /Volumes/T7/mention-markets/raw/
 | `metrics.py` | Calibration buckets, MAD, strategy profitability, Kalshi fee calculation |
 | `plotting.py` | Matplotlib chart helpers (calibration curves, heatmaps, VWAP traces, etc.) |
 
+## Articles
+
+| Article | Description |
+|---------|-------------|
+| **[Cross-Category Calibration Analysis](articles/cross-category-calibration-analysis.md)** | Full write-up of the general mention markets analysis: dataset overview, settlement lag problem, calibration by category, MAD convergence, and strategy profitability with 16 figures. |
+| **[Political Mention Market Calibration](articles/political-mention-market-calibration.md)** | Deep dive into political speech mentions: subgroup calibration at multiple bucket granularities, longshot bias, VWAP trajectories, and YES vs NO strategy backtests with 22 figures. |
+
 ## Key Methodology
 
 - **VWAP snapshots** at 7d, 3d, 1d, 6h, 2h, 1h, 30m, 10m before close
@@ -46,10 +53,10 @@ data -> /Volumes/T7/mention-markets/raw/
 pip3.12 install --break-system-packages duckdb pandas matplotlib numpy pyarrow tabulate
 ```
 
-Ensure the T7 drive is mounted at `/Volumes/T7/mention-markets/raw/`, then:
+Ensure the T7 drive is mounted at `/Volumes/T7/mention-markets`, then:
 
 ```bash
-ln -sf /Volumes/T7/mention-markets/raw data
+ln -sf /Volumes/T7/mention-markets data
 ```
 
 ## References
