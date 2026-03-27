@@ -2,7 +2,9 @@
 
 ## Introduction
 
-Prediction markets promise a simple bargain: prices should equal probabilities. A contract trading at 70 cents should resolve in the affirmative 70% of the time. When they don't, the gap between price and reality represents either a trading opportunity or a structural feature of how these markets operate.
+Prediction markets promise a simple bargain: prices should equal probabilities (Wolfers & Zitzewitz, 2006). A contract trading at 70 cents should resolve in the affirmative 70% of the time. When they don't, the gap between price and reality represents either a trading opportunity or a structural feature of how these markets operate.
+
+Recent work by Bürgi, Deng, and Whelan (2025) provides the first systematic analysis of Kalshi's pricing across all contract types, documenting a favorite–longshot bias at the exchange level. This article extends that line of inquiry by decomposing calibration accuracy within a single contract family — mention markets — across categories, time horizons, and trading strategies.
 
 This article examines calibration accuracy across Kalshi's mention markets -- binary prediction contracts that resolve based on whether a specific person, topic, or phrase is mentioned during a scheduled broadcast or event. The analysis covers 18,948 resolved contracts across 126 distinct series, spanning six categories: Politicians, Sports, Earnings, Entertainment, Finance, and Media/News. Using volume-weighted average prices (VWAPs) computed at multiple time horizons before each market's final trade, we measure how well prices track actual outcomes, how quickly markets converge toward fair pricing, and whether simple threshold strategies can generate positive returns net of exchange fees.
 
@@ -155,12 +157,12 @@ Examining calibration at multiple VWAP horizons reveals how each category's pric
 
 ### Temporal Convergence
 
-All categories show improving calibration as the market approaches its final trade. MAD declines monotonically from the 1-day horizon to the 10-minute horizon across every category. This is the expected behavior in an informationally efficient market: prices incorporate new information as the event draws closer.
+All categories show improving calibration as the market approaches its final trade. MAD declines monotonically from the 1-day horizon to the 10-minute horizon across every category. This is the expected behavior in an informationally efficient market: prices incorporate new information as the event draws closer (Page & Clemen, 2013; Brown, Reade, & Vaughan Williams, 2019).
 
 ![MAD by category across time horizons](images/mad-by-category.png)
 *Figure 7: Mean Absolute Deviation across time horizons for all six categories. Time runs from the longest horizon (1 day, left) to the shortest (10 minutes, right). All categories converge toward lower MAD, but the rate of improvement varies substantially.*
 
-However, the rate of convergence varies. Some categories (notably Sports) achieve relatively tight calibration by the 6-hour mark, while others (Entertainment, Earnings) retain substantial MAD even at the 10-minute horizon. This suggests that information arrival patterns differ by domain -- sports outcomes may become more predictable earlier in the broadcast, while entertainment and earnings mentions may remain uncertain until the final minutes.
+However, the rate of convergence varies. Some categories (notably Sports) achieve relatively tight calibration by the 6-hour mark, while others (Entertainment, Earnings) retain substantial MAD even at the 10-minute horizon. This suggests that information arrival patterns differ by domain -- sports outcomes may become more predictable earlier in the broadcast, while entertainment and earnings mentions may remain uncertain until the final minutes. This variation echoes patterns noted in broader prediction market research, where calibration quality depends on the information environment, the predictability of the event, and the depth of trading participation (Snowberg, Wolfers, & Zitzewitz, 2013).
 
 ### Calibration Over Time
 
@@ -186,7 +188,7 @@ The backtest reveals an asymmetry between YES and NO strategies:
 
 **Buy NO** is profitable across all tested thresholds, with the strongest returns at the 40--50% level: +14.1 cents per trade at the <50% threshold across 8,152 trades. This reflects the persistent longshot bias -- low-probability contracts (priced cheaply) resolve NO more often than their price implies, making the NO side systematically underpriced.
 
-The asymmetry is stark. The best Buy NO threshold (<50%) averages +14.1 cents per trade, nearly three times the best Buy YES threshold's +5.0 cents. This suggests that the dominant miscalibration in mention markets is on the low end of the probability spectrum: the market overestimates the likelihood that a word or phrase will be mentioned.
+The asymmetry is stark. The best Buy NO threshold (<50%) averages +14.1 cents per trade, nearly three times the best Buy YES threshold's +5.0 cents. This suggests that the dominant miscalibration in mention markets is on the low end of the probability spectrum: the market overestimates the likelihood that a word or phrase will be mentioned. This pattern is consistent with the favorite–longshot bias documented across betting and prediction markets (Page & Clemen, 2013; Snowberg & Wolfers, 2010), including at the aggregate Kalshi level (Bürgi, Deng, & Whelan, 2025). Snowberg and Wolfers find evidence that such biases are driven by systematic misperception of small probabilities rather than risk-seeking preferences, an interpretation consistent with prospect theory (Kahneman & Tversky, 1979).
 
 ![Strategy profitability heatmap showing Buy YES and Buy NO returns by category and threshold](images/strategy-heatmap.png)
 *Figure 12: Net PnL per trade (in cents) for Buy YES (left) and Buy NO (right) strategies across all categories and thresholds. Green cells indicate profitable strategies; red cells indicate losses. The NO side shows broadly positive returns, while the YES side is profitable only at higher thresholds.*
@@ -220,12 +222,34 @@ Several caveats apply to these findings:
 - **Execution assumptions.** The backtest assumes fills at the 2-hour VWAP, which may not be achievable in practice. Large position sizes would move the order book, and the 2-hour VWAP is a retrospective snapshot, not a tradeable price.
 - **Market evolution.** These markets are relatively new. Calibration errors may shrink as participants learn and liquidity deepens. The calibration-over-time analysis provides early evidence of this convergence.
 - **Survivorship bias.** Only resolved contracts with recorded trades are analyzed. Markets that were delisted, cancelled, or had zero trading activity are excluded.
-- **Maker fee advantage not modeled.** Kalshi charges zero fees for limit orders that provide liquidity. A more sophisticated strategy using resting limit orders would capture the same calibration edge while paying no fees, substantially improving returns beyond what is reported here.
+- **Maker fee advantage not modeled.** Because resting orders can reduce or avoid taker fees, and some maker orders are fee-free under Kalshi's current schedule, a liquidity-provision strategy could improve returns relative to the taker-only backtest modeled here.
 
 ## Conclusion
 
 Kalshi's mention markets exhibit systematic miscalibration that varies meaningfully by category. The dominant pattern is a longshot bias: low-probability contracts overestimate the likelihood of a mention, creating persistent value on the NO side. This bias survives after accounting for Kalshi's taker fee schedule, which conveniently charges less at the probability extremes where the mispricing is largest.
 
-The finding that Politicians -- the highest-volume category -- also shows the best calibration suggests that liquidity and participation depth contribute to price accuracy. Conversely, niche categories with fewer participants and less predictable content (Entertainment, Finance) show larger deviations from fair pricing.
+The finding that Politicians -- the highest-volume category -- also shows the best calibration suggests that liquidity and participation depth contribute to price accuracy, consistent with the broader evidence that thin markets and weak participation undermine prediction market forecasts (Wolfers & Zitzewitz, 2004; Arrow et al., 2008) and with Bürgi, Deng, and Whelan's (2026) finding that Kalshi's pricing bias has been diminishing as the market matures and volume grows. Conversely, niche categories with fewer participants and less predictable content (Entertainment, Finance) show larger deviations from fair pricing.
 
-Whether these patterns represent genuine alpha or an artifact of in-sample measurement remains an open question. The calibration-over-time analysis shows that the market has been improving, with MAD declining over the sample period. Traders and researchers should monitor whether these edges persist as the market matures.
+Whether these patterns represent genuine alpha or an artifact of in-sample measurement remains an open question. The fact that the same favorite–longshot structure appears both in our mention-market subset and in Bürgi, Deng, and Whelan's (2026) exchange-wide analysis suggests the bias is not an artifact of a single market type, though whether it survives as participation deepens remains to be seen. The calibration-over-time analysis shows that the market has been improving, with MAD declining over the sample period. Traders and researchers should monitor whether these edges persist as the market matures.
+
+## References
+
+Arrow, K.J., Forsythe, R., Gorham, M., et al. (2008). "The Promise of Prediction Markets." *Science*, 320(5878), 877–878.
+
+Brown, A., Reade, J. J., and Vaughan-Williams, L. (2019). "When Are Prediction Market Prices Most Informative?" *International Journal of Forecasting*, 35(1), 420–428.
+
+Bürgi, C., Deng, W., and Whelan, K. (2025). "Makers and Takers: The Economics of the Kalshi Prediction Market." CEPR Discussion Paper No. 20631; CESifo Working Paper No. 12122.
+
+Kahneman, D. and Tversky, A. (1979). "Prospect Theory: An Analysis of Decision under Risk." *Econometrica*, 47(2), 263–291.
+
+Page, L. and Clemen, R.T. (2013). "Do Prediction Markets Produce Well-Calibrated Probability Forecasts?" *The Economic Journal*, 123(568), 491–513.
+
+Snowberg, E. and Wolfers, J. (2010). "Explaining the Favorite–Long Shot Bias: Is it Risk-Love or Misperceptions?" *Journal of Political Economy*, 118(4), 723–746.
+
+Snowberg, E., Wolfers, J., and Zitzewitz, E. (2013). "Prediction Markets for Economic Forecasting." In *Handbook of Economic Forecasting*, Vol. 2, 657–687. Elsevier.
+
+Whelan, K. (2024). "Risk Aversion and Favourite–Longshot Bias in a Competitive Fixed-Odds Betting Market." *Economica*, 91(361), 188–209.
+
+Wolfers, J. and Zitzewitz, E. (2004). "Prediction Markets." *Journal of Economic Perspectives*, 18(2), 107–126.
+
+Wolfers, J. and Zitzewitz, E. (2006). "Interpreting Prediction Market Prices as Probabilities." NBER Working Paper No. 12200.
