@@ -4,7 +4,7 @@
 
 Political speech is unpredictable. A rally can veer from trade policy to personal grievances in seconds. A press briefing can pivot from prepared remarks to an unexpected exchange about a trending news story. This unpredictability is precisely what makes political speech mention markets on Kalshi interesting from a calibration standpoint: how well can a crowd of traders anticipate whether a specific word or phrase will be uttered during a live event?
 
-This article examines 7,320 resolved binary contracts across 32 political speech mention series on Kalshi, a CFTC-regulated prediction exchange. Each contract settles based on whether a particular word or phrase is mentioned during a scheduled political event -- a Trump rally, a White House press briefing, a mayoral debate. We divide these markets into four subgroups, measure calibration at multiple time horizons, and backtest simple threshold strategies that exploit the systematic biases we find -- all net of Kalshi's taker fee schedule.
+This article examines 7,320 resolved binary contracts across 32 political speech mention series on Kalshi, a CFTC-regulated prediction exchange (Kalshi Help Center; Wolfers and Zitzewitz 2004; Arrow et al. 2008). Each contract settles based on whether a particular word or phrase is mentioned during a scheduled political event -- a Trump rally, a White House press briefing, a mayoral debate. We divide these markets into four subgroups, measure calibration at multiple time horizons, and backtest simple threshold strategies that exploit the systematic biases we find -- all net of Kalshi's taker fee schedule.
 
 The core finding: these markets exhibit a persistent longshot bias that survives after fees, with the NO side offering substantially stronger returns than the YES side. The market consistently overestimates the probability that a word will be mentioned.
 
@@ -50,7 +50,7 @@ The 2-hour VWAP is the primary snapshot, balancing recency with statistical stab
 
 ### 2. Calibration Curves
 
-Contracts are grouped into probability buckets (at 1-cent, 5-cent, and 10-cent granularities) and the actual YES resolution rate within each bucket is compared to the bucket midpoint. Deviations from the 45-degree diagonal indicate systematic mispricing.
+Contracts are grouped into probability buckets (at 1-cent, 5-cent, and 10-cent granularities) and the actual YES resolution rate within each bucket is compared to the bucket midpoint (cf. Page and Clemen 2013). Deviations from the 45-degree diagonal indicate systematic mispricing.
 
 ### 3. Mean Absolute Deviation (MAD)
 
@@ -60,7 +60,7 @@ Calibration quality is summarized as:
 MAD = mean(|actual_yes_rate - implied_probability|) across buckets with n >= 5
 ```
 
-Lower MAD indicates better calibration. We track MAD across time horizons to measure convergence speed.
+Lower MAD indicates better calibration. This approach follows the calibration framework developed for prediction markets by Page and Clemen (2013), who also document the favorite-longshot bias as a function of time to expiration. We track MAD across time horizons to measure convergence speed.
 
 ### 4. Strategy Backtesting
 
@@ -80,7 +80,7 @@ Before examining static calibration curves, it's worth asking whether these mark
 ![Political mention calibration deviation over time, showing a declining trend from ~13% to ~3%](images/pol-calibration-over-time.png)
 *Figure 1: Cumulative calibration deviation over time for all political mention markets. The blue area shows the rolling MAD, with a quadratic trend line (dashed red). Early weeks show MAD above 12%; recent weeks have converged below 4%.*
 
-The trend is clear: calibration has improved substantially over the life of these markets.
+The trend is clear: calibration has improved substantially over the life of these markets. This convergence is consistent with broader evidence that prediction market informativeness varies with time horizon and trader composition (Page and Clemen 2013; Brown, Reade, and Vaughan Williams 2019).
 
 - **Overall MAD**: 5.35 percentage points
 - **Early period** (first 8 weeks): 12.97%
@@ -98,7 +98,7 @@ The aggregate calibration curve for all 7,320 political mention contracts reveal
 
 In the low-probability range (0--30 cents), contracts resolve YES less often than their price implies. These are the "longshots" -- bets on unlikely mentions that the market prices too generously. At the high end (60--100 cents), contracts resolve YES more frequently than implied -- the market is too pessimistic about near-certain mentions.
 
-This pattern is well-documented in traditional betting markets (horse racing, sports betting) and appears to transfer directly to prediction markets for political speech events.
+This pattern — the favorite-longshot bias — is one of the most extensively documented anomalies in betting markets, observed across horse racing, sports betting, and fixed-odds markets over more than fifty years of empirical study (Snowberg and Wolfers 2010). It has also been identified within prediction markets specifically, where prices in the low-probability range systematically overestimate the likelihood of the event occurring (Page and Clemen 2013). Bürgi, Deng, and Whelan (2025) document the same bias across Kalshi's full contract universe of over 300,000 contracts, including political markets. Our contribution is the subgroup decomposition and strategy backtesting within the political speech mention category specifically.
 
 ### Directional Accuracy by Subgroup
 
@@ -247,26 +247,26 @@ Several features of political speech markets contribute to their persistent misc
 
 1. **Content unpredictability.** Unlike sports broadcasts (where the set of likely mentions is constrained by the game) or earnings calls (where the agenda is largely predetermined), political speeches -- especially rallies and press conferences -- can cover virtually any topic. This makes it harder for traders to form accurate probability estimates.
 
-2. **Asymmetric information.** Some participants may have advance knowledge of speech topics (e.g., staffers, journalists with leaked talking points). This creates adverse selection: uninformed traders may systematically overprice longshot mentions, while informed traders extract value on the other side.
+2. **Asymmetric information.** Some participants may have advance knowledge of speech topics (e.g., staffers, journalists with leaked talking points). This creates adverse selection: uninformed traders may systematically overprice longshot mentions, while informed traders extract value on the other side. The behavioral mechanism underlying this overpricing is well-established: prospect theory's probability weighting function predicts that individuals systematically overweight small probabilities and underweight large ones (Kahneman and Tversky 1979), and Snowberg and Wolfers (2010) find empirical support for the view that probability misperception — rather than risk-loving preferences — drives the favorite-longshot bias.
 
-3. **Entertainment-driven trading.** Political mention markets attract participants who are watching events for entertainment rather than profit. These traders may overweight salient or exciting mention possibilities (e.g., "Will Trump mention [controversial topic]?"), inflating prices above fair value.
+3. **Entertainment-driven trading.** Political mention markets attract participants who are watching events for entertainment rather than profit. These traders may overweight salient or exciting mention possibilities (e.g., "Will Trump mention [controversial topic]?"), inflating prices above fair value. This is consistent with evidence that less information-driven order flow can temporarily reduce price efficiency in prediction markets (Brown, Reade, and Vaughan Williams 2019).
 
-4. **Thin late-market liquidity.** Even for the most liquid series (Trump), order books thin out in the final minutes before an event. This prevents the late-arriving information that would correct mispricing from being fully incorporated into prices.
+4. **Thin late-market liquidity.** Even for the most liquid series (Trump), order books thin out in the final minutes before an event. This prevents the late-arriving information that would correct mispricing from being fully incorporated into prices. More generally, liquidity does not automatically improve price efficiency; in some prediction markets, naive liquidity provision can slow the incorporation of information into prices (Tetlock 2008).
 
 ### The Fee Structure as Tailwind
 
-Kalshi's taker fee formula (`ceil(0.07 * p * (100 - p) / 100)`) creates a concave fee curve that peaks at p = 50 and declines toward both extremes. At p = 10 (a cheap longshot), the fee is just 1 cent. At p = 90, the fee is also just 1 cent.
+Kalshi's taker fee formula (Kalshi Fee Schedule 2026; `ceil(0.07 * p * (100 - p) / 100)`) creates a concave fee curve that peaks at p = 50 and declines toward both extremes. At p = 10 (a cheap longshot), the fee is just 1 cent. At p = 90, the fee is also just 1 cent.
 
 This is significant because the largest calibration errors occur precisely at these extremes. A strategy that buys NO on contracts priced below 30 cents pays minimal fees while capturing meaningful mispricing. The exchange's fee structure, designed to encourage trading, inadvertently subsidizes the exploitation of calibration errors.
 
-A maker strategy (using limit orders, which carry zero fees on Kalshi) would amplify this advantage further. The same calibration edge with zero transaction costs would produce substantially higher net returns.
+A maker strategy using resting limit orders — which avoid taker fees in markets where maker fees do not apply (Kalshi Help Center, "Limit Orders"; Kalshi Fee Schedule 2026) — would amplify this advantage further. The same calibration edge with zero transaction costs would produce substantially higher net returns.
 
 ## Limitations
 
 - **In-sample only.** All results are computed on the full dataset without train/test splits. The improving calibration trend (Section 2) suggests that historical patterns may not persist at the same magnitude.
 - **Correlated outcomes.** Multiple contracts within the same event (e.g., 20+ mention bets on a single Trump rally) are not independent. The effective sample size is smaller than the 7,320 contract count suggests.
 - **Execution assumptions.** The backtest assumes fills at the 2-hour VWAP, which is a retrospective snapshot. In practice, achieving this price requires being present in the market 2+ hours before the last trade, and larger position sizes would move the order book.
-- **Market evolution.** The calibration-over-time analysis shows improvement from ~13% MAD to ~3% MAD. If this trend continues, the trading edge documented here may shrink or disappear.
+- **Market evolution.** The calibration-over-time analysis shows improvement from ~13% MAD to ~3% MAD. If this trend continues, the trading edge documented here may shrink or disappear. Bürgi, Deng, and Whelan (2025) raise a similar question about whether the biases they document in Kalshi's broader contract universe will persist now that they have been publicly identified, consistent with the general pattern that financial market anomalies tend to attenuate after publication.
 - **Survivorship bias.** Only resolved contracts with recorded trades are analyzed. Cancelled or zero-activity markets are excluded.
 
 ## Conclusion
@@ -278,3 +278,27 @@ Simple threshold strategies exploiting this bias generate positive returns after
 The market is improving. Calibration deviation has declined from nearly 13% in the early weeks to roughly 3% in the most recent period, at a rate of -0.17 percentage points per week. This convergence suggests that participants are learning, but the residual miscalibration -- even in the most liquid subgroup (Trump Markets) -- indicates that structural features of political speech prediction (content unpredictability, entertainment-driven trading, thin late liquidity) prevent full price discovery.
 
 For traders, the implication is a window of opportunity that is narrowing but not yet closed. For market designers, the persistent bias suggests that liquidity incentives and contract design innovations could improve price accuracy. For researchers, these markets offer a natural laboratory for studying how crowds price fundamentally unpredictable events.
+
+## References
+
+Arrow, K.J., Forsythe, R., Gorham, M., Hahn, R., Hanson, R., et al. (2008). "The Promise of Prediction Markets." *Science*, 320(5878), 877–878. https://doi.org/10.1126/science.1157679
+
+Brown, A., Reade, J.J., & Vaughan Williams, L. (2019). "When Are Prediction Market Prices Most Informative?" *International Journal of Forecasting*, 35(1), 420–428. https://doi.org/10.1016/j.ijforecast.2018.07.012
+
+Bürgi, C., Deng, W., & Whelan, K. (2025). "Makers and Takers: The Economics of the Kalshi Prediction Market." CESifo Working Paper No. 12122. https://ssrn.com/abstract=5502658
+
+Kahneman, D. & Tversky, A. (1979). "Prospect Theory: An Analysis of Decision under Risk." *Econometrica*, 47(2), 263–291. https://doi.org/10.2307/1914185
+
+Kalshi. (2026). "Fee Schedule." https://kalshi.com/docs/kalshi-fee-schedule.pdf
+
+Kalshi Help Center. "How is Kalshi regulated?" https://help.kalshi.com/en/articles/13823765-how-is-kalshi-regulated
+
+Kalshi Help Center. "Limit Orders." https://help.kalshi.com/en/articles/13823811-limit-orders
+
+Page, L. & Clemen, R.T. (2013). "Do Prediction Markets Produce Well-Calibrated Probability Forecasts?" *Economic Journal*, 123(568), 491–513. https://doi.org/10.1111/j.1468-0297.2012.02561.x
+
+Snowberg, E. & Wolfers, J. (2010). "Explaining the Favorite–Long Shot Bias: Is It Risk-Love or Misperceptions?" *Journal of Political Economy*, 118(4), 723–746. https://doi.org/10.1086/655844
+
+Tetlock, P.C. (2008). "Liquidity and Prediction Market Efficiency." SSRN Working Paper. https://ssrn.com/abstract=929916
+
+Wolfers, J. & Zitzewitz, E. (2004). "Prediction Markets." *Journal of Economic Perspectives*, 18(2), 107–126. https://doi.org/10.1257/0895330041371321
