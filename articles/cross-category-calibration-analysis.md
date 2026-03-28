@@ -1,130 +1,91 @@
 # Cross-Category Calibration Analysis of Kalshi Mention Markets
 
-## Introduction
+Prediction markets promise a very clean deal: the price is supposed to be the probability. If a contract trades at 70 cents, it should resolve YES about 70% of the time (Wolfers & Zitzewitz, 2006). When that relationship breaks, the interesting question is not just whether the market is wrong. It is how it is wrong, where it is wrong, and whether the error is random noise or something more structural.
 
-Prediction markets promise a simple bargain: prices should equal probabilities (Wolfers & Zitzewitz, 2006). A contract trading at 70 cents should resolve in the affirmative 70% of the time. When they don't, the gap between price and reality represents either a trading opportunity or a structural feature of how these markets operate.
+Recent work by Bürgi, Deng, and Whelan (2025) shows that Kalshi exhibits a favorite–longshot bias at the exchange level. But aggregate results only get you so far. Mention markets are a much better laboratory for looking at calibration because they are repetitive, short-lived, and unusually legible: the same types of events recur, the contract wording is clean, and outcomes can be checked quickly. That makes them one of the best places to see whether the market is actually learning or just repeating the same pricing mistakes in slightly different costumes.
 
-Recent work by Bürgi, Deng, and Whelan (2025) provides the first systematic analysis of Kalshi's pricing across all contract types, documenting a favorite–longshot bias at the exchange level. This article extends that line of inquiry by decomposing calibration accuracy within a single contract family — mention markets — across categories, time horizons, and trading strategies.
-
-This article examines calibration accuracy across Kalshi's mention markets -- binary prediction contracts that resolve based on whether a specific person, topic, or phrase is mentioned during a scheduled broadcast or event. The analysis covers 18,948 resolved contracts across 126 distinct series, spanning six categories: Politicians, Sports, Earnings, Entertainment, Finance, and Media/News. Using volume-weighted average prices (VWAPs) computed at multiple time horizons before each market's final trade, we measure how well prices track actual outcomes, how quickly markets converge toward fair pricing, and whether simple threshold strategies can generate positive returns net of exchange fees.
+This article looks at 18,948 resolved mention contracts across 126 series in six categories: Politicians, Sports, Earnings, Entertainment, Finance, and Media/News. Using volume-weighted average prices (VWAPs) measured at multiple horizons before the last trade, I examine how well prices track realized outcomes, how quickly markets move toward fair probabilities, and whether the remaining errors survive Kalshi's fee schedule well enough to matter. The basic finding is simple. Mention markets do converge. They just do not all converge in the same way, or at the same speed.
 
 ## The Dataset
 
-### Source and Scope
+The dataset is drawn from Kalshi, a CFTC-regulated prediction exchange. It combines trade-level records with contract metadata across 141 mention series.
 
-The dataset is drawn from Kalshi, a CFTC-regulated prediction exchange. It consists of two types of parquet files:
-
-- **Trade data**: Individual trade records with timestamps, prices (in cents, 1--99), trade counts, and taker side identification across 141 series.
-- **Market data**: Contract metadata including ticker, series, title, result (yes/no), close time, volume, and open interest.
-
-The raw dataset contains 35,837 total markets. Of these, 33,587 have resolved. After filtering to markets with recorded trades and valid VWAP computations, 18,948 contracts remain for analysis. The data spans January 2025 through March 2026, capturing approximately 7.6 million individual trades.
-
-### Category Structure
+In raw form, the sample contains 35,837 total markets. Of these, 33,587 have resolved. After filtering to contracts with recorded trades and valid VWAP computations, 18,948 contracts remain for analysis. The sample runs from January 2025 through March 2026 and includes roughly 7.6 million individual trades.
 
 Each mention series is assigned to one of six categories based on its content domain:
 
 | Category | Series | Contracts | Description |
-|----------|--------|-----------|-------------|
+| --- | --- | --- | --- |
 | Politicians | 32 | 7,320 | Trump rallies, White House press briefings, mayoral debates, congressional hearings |
 | Sports | 13 | 5,383 | NFL, NBA, NCAA, MLB, UFC/MMA broadcasts |
 | Earnings | 1 | 2,118 | Corporate earnings call mentions |
 | Entertainment | 21 | 1,228 | Late night shows, award ceremonies, reality TV, podcasts |
-| Media/News | 17 | 757 | Cable news programs (Fox News, MSNBC, CNN) |
-| Finance | 14 | 559 | Federal Reserve, ECB, SEC proceedings, fintech CEO appearances |
+| Media/News | 17 | 757 | Cable news programs such as Fox News, MSNBC, and CNN |
+| Finance | 14 | 559 | Federal Reserve, ECB, SEC proceedings, and fintech CEO appearances |
 
-An additional 663 contracts from 28 series fall into an "Other" residual category.
+*Table 1: Category structure of the Kalshi mention-markets dataset.*
 
-Politicians dominate the dataset by volume, accounting for 39% of all analyzed contracts. Sports markets are the second largest category at 28%. Together, these two categories represent two-thirds of the dataset.
+- Trade data: individual trade records with timestamps, prices in cents (1–99), trade counts, and taker-side identification across 141 series.
+- Market data: contract metadata including ticker, series, title, result, close time, volume, and open interest.
 
-### Data Quality: The Settlement Lag Problem
+An additional 663 contracts from 28 series fall into an "Other" residual category. Politicians account for 39% of all analyzed contracts, and Sports adds another 28%. Together, those two categories make up about two-thirds of the full sample.
 
-A critical methodological choice in this analysis involves the distinction between two timestamps attached to each contract:
+## The Settlement Lag Problem
 
-- **Close time** (`close_time`): When Kalshi settles and pays out the market.
-- **Last trade time** (`last_trade_time`): The timestamp of the final recorded trade, computed as `MAX(created_time)` per ticker.
+A surprisingly important data issue in this project is the distinction between two timestamps attached to each contract: close_time, when Kalshi settles and pays out the market, and last_trade_time, the timestamp of the final recorded trade. Those are not interchangeable.
 
-These are not the same. Settlement routinely lags the last trade by a substantial margin. Across all mention markets:
+Settlement often lags the last trade by a wide margin. Across all mention markets:
 
-- **Median lag**: 71 minutes (1.2 hours)
-- **75th percentile**: 202 minutes (3.4 hours)
-- **Maximum**: 19,617 minutes (13.6 days)
-- **53.2%** of contracts have a settlement lag exceeding 1 hour
-- **22.6%** exceed 4 hours
+- Median lag: 71 minutes (1.2 hours)
+- 75th percentile: 202 minutes (3.4 hours)
+- Maximum: 19,617 minutes (13.6 days)
+- 53.2% of contracts have a settlement lag greater than 1 hour
+- 22.6% exceed 4 hours
 
-![Distribution of settlement lag across all mention markets, with a histogram (left) and per-category box plots (right)](images/settlement-lag.png)
-*Figure 1: Settlement lag (close_time minus last_trade_time) across all mention markets. The left panel shows the overall distribution with median and 75th percentile marked. The right panel breaks down the lag by category, revealing that some market types consistently settle much later than others.*
+![Figure 1: Settlement lag (close_time minus last_trade_time) across all mention markets. The left panel shows the overall distribution with the median and 75th percentile marked. The right panel breaks the lag down by category, revealing that some market types consistently settle much later than others.](images/settlement-lag.png)
+*Figure 1: Settlement lag (close_time minus last_trade_time) across all mention markets. The left panel shows the overall distribution with the median and 75th percentile marked. The right panel breaks the lag down by category, revealing that some market types consistently settle much later than others.*
 
-This gap matters because VWAP horizons must be anchored to a reference time. If anchored to settlement time, a "2-hour VWAP" would measure the average price of trades occurring more than 2 hours before Kalshi settled the market -- not 2 hours before trading actually stopped. For markets with large settlement gaps, all short-horizon VWAPs (10 minutes, 30 minutes, 1 hour) would collapse to identical values because all trades occurred before every cutoff.
+This matters because VWAP horizons need to be anchored to the moment trading actually stopped, not to the moment Kalshi eventually settled the contract. If a so-called 2-hour VWAP is anchored to settlement time, it may end up reflecting trades that occurred many hours before the market stopped moving. In extreme cases, the 10-minute, 30-minute, 1-hour, and 2-hour VWAPs all collapse to the same value simply because every trade happened before every cutoff.
 
-In an earlier version of this analysis, VWAPs were anchored to `close_time`. This caused approximately 82% of markets to show `vwap_2h == vwap_10m`. After correcting the anchor to `last_trade_time`, only 17.7% of markets show this equality -- genuine cases where all trading ceased more than 2 hours before the final trade.
+In an earlier version of this analysis, I anchored VWAPs to close_time. That made roughly 82% of markets show vwap_2h equal to vwap_10m. After correcting the anchor to last_trade_time, that number falls to 17.7% — much closer to what one would expect from genuine early trading cessation rather than a timestamping artifact.
 
 ## Methodology
 
-### VWAP Computation
+For each resolved contract, I compute volume-weighted average prices at eight horizons before the last trade: 7 days, 3 days, 1 day, 6 hours, 2 hours, 1 hour, 30 minutes, and 10 minutes. The 2-hour VWAP serves as the main snapshot throughout the analysis because it balances recency with stability — close enough to capture late information, but not so close that a handful of final prints dominate the signal.
 
-For each resolved contract, we compute volume-weighted average prices at eight time horizons before the last trade:
+The VWAP at a given horizon is defined as:
 
-**7 days, 3 days, 1 day, 6 hours, 2 hours, 1 hour, 30 minutes, 10 minutes**
+$$\mathrm{VWAP}(h)=\frac{\sum_{t_i<\mathrm{cutoff}_h} p_i v_i}{\sum_{t_i<\mathrm{cutoff}_h} v_i}$$
 
-Each VWAP is calculated as:
+where the cutoff is last_trade_time minus the relevant horizon. Prices are in cents, so a VWAP of 70 corresponds to a 70% market-implied YES probability.
 
-```
-VWAP(horizon) = SUM(price * volume for trades before cutoff) / SUM(volume for trades before cutoff)
-```
+Calibration is measured by sorting contracts into probability buckets based on VWAP and then comparing each bucket's implied probability to its realized YES rate. A perfectly calibrated market would sit on the 45-degree diagonal: contracts priced at 15% would resolve YES about 15% of the time.
 
-where the cutoff is `last_trade_time - horizon`. Only trades occurring strictly before the cutoff contribute to that horizon's VWAP. Prices are in cents (1--99), so a VWAP of 70 implies a 70% market-implied probability of YES resolution.
+To summarize calibration quality in a single number, I use Mean Absolute Deviation (MAD):
 
-The 2-hour VWAP serves as the primary snapshot throughout the analysis. It offers a balance between recency (capturing late information) and stability (not dominated by a handful of final trades).
+$$\mathrm{MAD}=\operatorname{mean}\left(\left|\mathrm{ActualYesRate}-\mathrm{ImpliedProbability}\right|\right)$$
 
-### Calibration Measurement
+MAD is expressed in percentage points and is computed across all buckets with at least five observations. Lower values indicate better calibration.
 
-Calibration is assessed by grouping contracts into probability buckets based on their VWAP and comparing the bucket's average implied probability to the actual YES resolution rate within that bucket.
+Kalshi's taker fee schedule is also built directly into the backtests:
 
-For each bucket of width `b` cents (typically 10):
+$$\mathrm{fee}(p)=\left\lceil 0.07 \cdot \frac{p(100-p)}{100} \right\rceil$$
 
-1. Assign each contract to a bucket based on its VWAP (e.g., 0--10%, 10--20%, ..., 90--100%).
-2. Compute the **actual YES rate** within the bucket: the fraction of contracts that resolved YES.
-3. Compare to the bucket **midpoint** (the implied probability): 5%, 15%, 25%, ..., 95%.
+where p is the contract price in cents. Fees are highest near the middle of the probability range and decline toward the extremes, which matters because the largest calibration errors often show up precisely at those extremes.
 
-A perfectly calibrated market produces points lying exactly on the 45-degree diagonal: contracts priced at 15% resolve YES 15% of the time.
+To test whether miscalibration is economically meaningful rather than just statistically visible, I backtest two simple threshold strategies on the 2-hour VWAP:
 
-### Mean Absolute Deviation (MAD)
+- Buy YES: purchase YES contracts when the 2-hour VWAP exceeds a given threshold.
+- Buy NO: purchase NO contracts when the 2-hour VWAP falls below a given threshold.
 
-To reduce calibration quality to a single number, we compute the Mean Absolute Deviation:
+Thresholds are tested at 10-point intervals from 10% through 90%, and net PnL per trade is computed after deducting Kalshi taker fees.
 
-```
-MAD = mean(|actual_yes_rate - implied_probability|) across all buckets with n >= 5
-```
-
-MAD is expressed in percentage points. A MAD of 0 indicates perfect calibration. A MAD of 10 means the market's prices deviate from true probabilities by an average of 10 percentage points across the probability spectrum. Buckets with fewer than 5 observations are excluded to avoid noise.
-
-### Fee Structure
-
-Kalshi charges taker fees according to:
-
-```
-fee = ceil(0.07 * p * (100 - p) / 100)
-```
-
-where `p` is the contract price in cents. This fee is maximized at p = 50 (fee = 1.75 cents, rounded to 2 cents) and approaches zero at the extremes. The declining fee near probability extremes is significant: it means the exchange takes a smaller cut precisely where calibration errors tend to be largest.
-
-### Strategy Backtesting
-
-Two threshold strategies are tested:
-
-- **Buy YES**: Purchase YES contracts when the 2-hour VWAP exceeds a given threshold. The bet pays 100 cents if the contract resolves YES, and the cost is the entry price plus fees.
-- **Buy NO**: Purchase NO contracts when the 2-hour VWAP falls below a given threshold. The bet pays 100 cents if the contract resolves NO, and the cost is `(100 - price)` plus fees.
-
-Thresholds are tested at 10% intervals from 10% through 90%. Net PnL per trade is reported after deducting Kalshi taker fees.
-
-## Findings
-
-### Category-Level Calibration
+## Category-Level Calibration
 
 The summary statistics reveal meaningful variation across categories:
 
 | Category | Contracts | YES Rate | Directional Accuracy | MAD (2h) |
-|----------|-----------|----------|---------------------|----------|
+| --- | --- | --- | --- | --- |
 | Earnings | 2,118 | 57.4% | 88.5% | 12.1% |
 | Entertainment | 1,228 | 32.3% | 92.6% | 16.4% |
 | Finance | 559 | 39.0% | 86.6% | 11.6% |
@@ -132,126 +93,139 @@ The summary statistics reveal meaningful variation across categories:
 | Politicians | 7,320 | 44.9% | 83.6% | 9.5% |
 | Sports | 5,383 | 52.0% | 87.3% | 11.9% |
 
-**Directional accuracy** -- whether the 2-hour VWAP correctly predicts the outcome (above 50 = YES, below 50 = NO) -- exceeds 83% across all categories. Entertainment leads at 92.6%, though this partly reflects the category's low base rate (only 32.3% resolve YES): a strategy of always predicting NO would achieve 67.7% accuracy.
+*Table 2: Category-level summary statistics using the 2-hour VWAP.*
 
-**Calibration quality (MAD)** tells a different story. Politicians have the lowest MAD at 9.5 percentage points, suggesting that the highest-volume category is also the best-calibrated. Entertainment has the worst calibration at 16.4% MAD despite having the highest directional accuracy -- a pattern consistent with systematic mispricing of low-probability contracts.
+![Figure 2: Calibration curves by category using the 2-hour VWAP. Each point represents a 10-cent probability bucket. The dashed diagonal is perfect calibration. Deviations above the line indicate under-pricing; deviations below indicate over-pricing.](images/calibration-curves-by-category.png)
+*Figure 2: Calibration curves by category using the 2-hour VWAP. Each point represents a 10-cent probability bucket. The dashed diagonal is perfect calibration. Deviations above the line indicate under-pricing; deviations below indicate over-pricing.*
 
-![Calibration curves for all six categories overlaid on a single chart](images/calibration-curves-by-category.png)
-*Figure 2: Calibration curves by category using the 2-hour VWAP. Each point represents a 10-cent probability bucket. The dashed diagonal is perfect calibration. Deviations above the line indicate under-pricing (market too pessimistic); deviations below indicate over-pricing (market too optimistic).*
+Directional accuracy — whether the 2-hour VWAP gets the direction right by predicting YES above 50 and NO below 50 — exceeds 83% in every category. Entertainment leads at 92.6%, but that partly reflects its low base rate: only 32.3% of entertainment contracts resolve YES, so a strategy that always predicts NO would already start with a structural advantage.
 
-### Multi-Horizon Calibration
+MAD tells a different story. Politicians have the lowest MAD at 9.5 percentage points, which suggests that the highest-volume category is also the best calibrated. Entertainment has the worst calibration at 16.4% despite the highest directional accuracy — exactly the kind of pattern one would expect when low-probability contracts are systematically mispriced rather than simply guessed in the wrong direction.
 
-Examining calibration at multiple VWAP horizons reveals how each category's pricing accuracy evolves as the event approaches. The charts below show calibration curves at six time horizons -- from 1 day before the last trade down to 10 minutes -- for each of the four main categories.
+## Multi-Horizon Calibration
+
+Looking at a single snapshot misses the more interesting question: how does pricing improve as the event approaches? The next set of charts compares calibration curves across six horizons — from one day before the last trade down to ten minutes — for the four largest categories.
 
 ![Multi-horizon calibration for Earnings markets](images/multi-horizon-earnings.png)
-*Figure 3: Earnings mention markets -- calibration curves at six time horizons. The tighter clustering of curves at shorter horizons shows the market converging toward fair pricing as the earnings call progresses.*
+*Figure 3: Earnings mention markets — calibration curves at six time horizons. The tighter clustering of curves at shorter horizons shows the market converging toward fair pricing as the earnings call progresses.*
 
 ![Multi-horizon calibration for Entertainment markets](images/multi-horizon-entertainment.png)
-*Figure 4: Entertainment mention markets -- calibration across horizons. The persistent gap between the curves and the diagonal, even at the 10-minute mark, reflects this category's high MAD and systematic mispricing of low-probability contracts.*
+*Figure 4: Entertainment mention markets — calibration across horizons. The persistent gap between the curves and the diagonal, even at the 10-minute mark, reflects this category's high MAD and systematic mispricing of low-probability contracts.*
 
 ![Multi-horizon calibration for Politicians markets](images/multi-horizon-politicians.png)
-*Figure 5: Politicians mention markets -- the highest-volume and best-calibrated category. Curves converge tightly toward the diagonal at shorter horizons, consistent with deep liquidity enabling efficient price discovery.*
+*Figure 5: Politicians mention markets — the highest-volume and best-calibrated category. Curves converge tightly toward the diagonal at shorter horizons, consistent with deeper liquidity enabling more efficient price discovery.*
 
 ![Multi-horizon calibration for Sports markets](images/multi-horizon-sports.png)
-*Figure 6: Sports mention markets -- calibration across horizons. Sports markets achieve relatively good calibration early, likely because broadcast schedules and content are more predictable.*
+*Figure 6: Sports mention markets — calibration across horizons. Sports markets achieve relatively good calibration early, likely because broadcast structure and likely topics are more predictable.*
 
-### Temporal Convergence
+Every category improves as the event gets closer, which is what an informationally efficient market is supposed to do. But the speed of convergence is not the same across domains. Sports tightens early. Entertainment and Earnings stay noisy much longer. That difference matters because it suggests the market is not just learning over time; it is learning at different speeds depending on the structure of the underlying event.
 
-All categories show improving calibration as the market approaches its final trade. MAD declines monotonically from the 1-day horizon to the 10-minute horizon across every category. This is the expected behavior in an informationally efficient market: prices incorporate new information as the event draws closer (Page & Clemen, 2013; Brown, Reade, & Vaughan Williams, 2019).
+## Temporal Convergence
 
-![MAD by category across time horizons](images/mad-by-category.png)
+The same story becomes clearer when calibration is collapsed into MAD. All categories show improving calibration as the market approaches the final trade, and MAD declines monotonically from the 1-day horizon to the 10-minute horizon in every category. That is exactly what one would expect in an informationally efficient market as new information gets absorbed into price (Page & Clemen, 2013; Brown, Reade, & Vaughan Williams, 2019).
+
+![Figure 7: Mean Absolute Deviation across time horizons for all six categories. Time runs from the longest horizon (1 day, left) to the shortest (10 minutes, right). All categories converge toward lower MAD, but the rate of improvement varies substantially.](images/mad-by-category.png)
 *Figure 7: Mean Absolute Deviation across time horizons for all six categories. Time runs from the longest horizon (1 day, left) to the shortest (10 minutes, right). All categories converge toward lower MAD, but the rate of improvement varies substantially.*
 
-However, the rate of convergence varies. Some categories (notably Sports) achieve relatively tight calibration by the 6-hour mark, while others (Entertainment, Earnings) retain substantial MAD even at the 10-minute horizon. This suggests that information arrival patterns differ by domain -- sports outcomes may become more predictable earlier in the broadcast, while entertainment and earnings mentions may remain uncertain until the final minutes. This variation echoes patterns noted in broader prediction market research, where calibration quality depends on the information environment, the predictability of the event, and the depth of trading participation (Snowberg, Wolfers, & Zitzewitz, 2013).
+The rate of convergence, however, is not uniform. Some categories — especially Sports — reach fairly tight calibration by the 6-hour mark, while others, particularly Entertainment and Earnings, still retain meaningful error near the end. That suggests differences in information arrival: some events become legible early, while others remain genuinely unresolved until the final stretch. More broadly, it fits the larger prediction-market literature showing that calibration depends heavily on the information environment, the predictability of the event, and the depth of participation (Snowberg, Wolfers, & Zitzewitz, 2013).
 
-### Calibration Over Time
+## Calibration Over Time
 
-Beyond the question of how calibration improves within a single contract's lifetime, we can ask whether the market as a whole has become better-calibrated over the months of its existence. Using cumulative trade positions, we compute the rolling MAD at weekly intervals for each main category.
+There is a second convergence question here. Even if prices improve within a contract's lifetime, has the market itself become better calibrated over the months of its existence? To answer that, I compute rolling cumulative MAD at weekly intervals for the four main categories.
 
 ![Calibration deviation over time for Earnings](images/calibration-over-time-earnings.png)
-*Figure 8: Earnings -- cumulative calibration deviation over time. The trend line shows whether the market's pricing accuracy is improving or degrading as it matures.*
+*Figure 8: Earnings — cumulative calibration deviation over time. The trend line shows whether the market's pricing accuracy is improving or degrading as it matures.*
 
 ![Calibration deviation over time for Entertainment](images/calibration-over-time-entertainment.png)
-*Figure 9: Entertainment -- cumulative calibration deviation over time.*
+*Figure 9: Entertainment — cumulative calibration deviation over time.*
 
 ![Calibration deviation over time for Politicians](images/calibration-over-time-politicians.png)
-*Figure 10: Politicians -- cumulative calibration deviation over time. As the highest-volume category, Politicians show the most stable and gradually improving calibration.*
+*Figure 10: Politicians — cumulative calibration deviation over time. As the highest-volume category, Politicians show the most stable and gradually improving calibration.*
 
 ![Calibration deviation over time for Sports](images/calibration-over-time-sports.png)
-*Figure 11: Sports -- cumulative calibration deviation over time.*
+*Figure 11: Sports — cumulative calibration deviation over time.*
 
-### Strategy Profitability
+The category-level time series suggest that mention markets are learning. Calibration generally improves as more contracts are traded and resolved, though the slope is not identical across categories and some domains remain structurally noisier than others. That is one reason it makes more sense to think of mention markets as a family of related microstructures rather than as one homogeneous asset class.
 
-The backtest reveals an asymmetry between YES and NO strategies:
+## Strategy Profitability
 
-**Buy YES** becomes profitable above the 50% threshold, peaking at the 70% level with an average net PnL of +5.0 cents per trade across 6,424 trades. Returns taper at the 90% threshold (+3.1 cents/trade) as the entry price leaves less room for profit despite a 98% hit rate.
+The backtest reveals a clear asymmetry between YES-side and NO-side strategies.
 
-**Buy NO** is profitable across all tested thresholds, with the strongest returns at the 40--50% level: +14.1 cents per trade at the <50% threshold across 8,152 trades. This reflects the persistent longshot bias -- low-probability contracts (priced cheaply) resolve NO more often than their price implies, making the NO side systematically underpriced.
+Buy YES becomes profitable above the 50% threshold and peaks at the 70% level, with average net PnL of +5.0 cents per trade across 6,424 trades. Returns taper at the 90% threshold because the hit rate rises but the remaining upside gets too small.
 
-The asymmetry is stark. The best Buy NO threshold (<50%) averages +14.1 cents per trade, nearly three times the best Buy YES threshold's +5.0 cents. This suggests that the dominant miscalibration in mention markets is on the low end of the probability spectrum: the market overestimates the likelihood that a word or phrase will be mentioned. This pattern is consistent with the favorite–longshot bias documented across betting and prediction markets (Page & Clemen, 2013; Snowberg & Wolfers, 2010), including at the aggregate Kalshi level (Bürgi, Deng, & Whelan, 2025). Snowberg and Wolfers find evidence that such biases are driven by systematic misperception of small probabilities rather than risk-seeking preferences, an interpretation consistent with prospect theory (Kahneman & Tversky, 1979).
+Buy NO is profitable across every tested threshold, with the strongest returns at the 40–50% range: +14.1 cents per trade at the <50% threshold across 8,152 trades. That reflects a persistent longshot bias — low-probability contracts resolve NO more often than their price implies, leaving the NO side systematically underpriced.
 
-![Strategy profitability heatmap showing Buy YES and Buy NO returns by category and threshold](images/strategy-heatmap.png)
+![Figure 12: Net PnL per trade (in cents) for Buy YES (left) and Buy NO (right) strategies across all categories and thresholds. Green cells indicate profitable strategies; red cells indicate losses. The NO side shows broadly positive returns, while the YES side is profitable only at higher thresholds.](images/strategy-heatmap.png)
 *Figure 12: Net PnL per trade (in cents) for Buy YES (left) and Buy NO (right) strategies across all categories and thresholds. Green cells indicate profitable strategies; red cells indicate losses. The NO side shows broadly positive returns, while the YES side is profitable only at higher thresholds.*
 
-### VWAP Price Trajectories
+The asymmetry is not subtle. The best Buy NO threshold (<50%) averages +14.1 cents per trade, nearly three times the best Buy YES threshold. That implies the dominant miscalibration in mention markets sits on the low end of the probability distribution: traders systematically overestimate the chance that a word or phrase will be mentioned. The pattern lines up with the favorite–longshot bias documented in betting and prediction markets more broadly (Page & Clemen, 2013; Snowberg & Wolfers, 2010), including at the aggregate Kalshi level (Bürgi, Deng, & Whelan, 2025).
 
-The spaghetti plots below show the VWAP trajectory for every contract in each main category, from 7 days before the last trade down to 10 minutes. Green traces resolved YES; red traces resolved NO. These visualizations reveal the overall separation between outcomes and the characteristic "funnel" pattern as prices converge toward 0 or 100 near the event.
+## VWAP Price Trajectories
+
+The spaghetti plots below show the VWAP trajectory for every contract in each main category, from seven days before the last trade down to ten minutes. Green traces resolve YES; red traces resolve NO. What they make visible is the broad separation between outcomes and the familiar funnel pattern as prices move toward 0 or 100 near resolution.
 
 ![VWAP traces for Earnings markets](images/vwap-traces-earnings.png)
-*Figure 13: Earnings -- individual contract VWAP trajectories. Each line is one contract. The separation between green (YES) and red (NO) traces widens as the event approaches, reflecting increasing market confidence.*
+*Figure 13: Earnings — individual contract VWAP trajectories. Each line is one contract. The separation between green (YES) and red (NO) traces widens as the event approaches, reflecting rising market confidence.*
 
 ![VWAP traces for Entertainment markets](images/vwap-traces-entertainment.png)
-*Figure 14: Entertainment -- VWAP trajectories. The preponderance of red traces reflects the low YES rate (32.3%) in this category.*
+*Figure 14: Entertainment — VWAP trajectories. The preponderance of red traces reflects the low YES rate (32.3%) in this category.*
 
 ![VWAP traces for Politicians markets](images/vwap-traces-politicians.png)
-*Figure 15: Politicians -- VWAP trajectories. The dense mass of traces reflects the category's large contract count (7,320), with clear separation between outcomes emerging by the 2-hour mark.*
+*Figure 15: Politicians — VWAP trajectories. The dense mass of traces reflects the category's large contract count, with clear separation between outcomes emerging by the 2-hour mark.*
 
 ![VWAP traces for Sports markets](images/vwap-traces-sports.png)
-*Figure 16: Sports -- VWAP trajectories. The more balanced split between green and red traces is consistent with Sports' near-even YES rate (52.0%).*
+*Figure 16: Sports — VWAP trajectories. The more balanced split between green and red traces is consistent with Sports' near-even YES rate (52.0%).*
 
-### Category-Specific Opportunities
+These plots are useful because they show the same phenomenon in less aggregated form. Calibration curves and heatmaps summarize the edge. The trajectories show how that edge actually develops over time. Some categories separate early and cleanly. Others stay tangled much longer, which is exactly what later shows up as higher residual MAD and weaker calibration.
 
-Profitability is not uniform across categories. The heatmap analysis reveals that some category-threshold combinations yield substantially higher returns than others. Entertainment and Earnings contracts show particularly large NO-side profits, consistent with their low YES rates and high MAD values. Politicians, despite having the best overall calibration, still offer positive returns at high YES thresholds due to the sheer volume of contracts available.
+## Category-Specific Opportunities
+
+Profitability is not uniform across categories. Entertainment and Earnings show especially large NO-side returns, which is consistent with their low YES rates and relatively poor calibration. Politicians, by contrast, are better calibrated overall but still produce attractive YES-side opportunities at high thresholds simply because the category is so large and liquid.
+
+That distinction matters if the goal is actual deployment rather than just descriptive measurement. A category with the largest apparent mispricing is not automatically the most attractive one if liquidity is thin, fills are hard, or the edge is concentrated in only a small handful of contracts. What matters is the combination of mispricing, scale, and execution quality.
 
 ## Limitations
 
-Several caveats apply to these findings:
+There are a few obvious limits to how far these results should be pushed. The first is that the whole exercise is in-sample: I use the same data to describe the calibration errors and to evaluate the strategy rules built on top of them. That means the edge may look cleaner in hindsight than it would in live deployment, especially if these markets have already become more efficient over time.
 
-- **In-sample only.** All results are computed on the full dataset without train/test splits. The patterns may not persist out of sample.
-- **Correlated outcomes.** Multiple contracts within the same event (e.g., several mention bets on a single Trump rally) are not independent. The effective sample size for statistical inference is smaller than raw contract counts suggest.
-- **Execution assumptions.** The backtest assumes fills at the 2-hour VWAP, which may not be achievable in practice. Large position sizes would move the order book, and the 2-hour VWAP is a retrospective snapshot, not a tradeable price.
-- **Market evolution.** These markets are relatively new. Calibration errors may shrink as participants learn and liquidity deepens. The calibration-over-time analysis provides early evidence of this convergence.
-- **Survivorship bias.** Only resolved contracts with recorded trades are analyzed. Markets that were delisted, cancelled, or had zero trading activity are excluded.
-- **Maker fee advantage not modeled.** Because resting orders can reduce or avoid taker fees, and some maker orders are fee-free under Kalshi's current schedule, a liquidity-provision strategy could improve returns relative to the taker-only backtest modeled here.
+The second is that the raw contract count overstates the amount of independent information in the sample. Many contracts are tied to the same underlying event — a single earnings call, sports broadcast, or political speech can generate a cluster of related mention markets that move together and often resolve together. So while the dataset is large, the effective sample size is smaller than the headline number suggests, and the backtests likely understate how lumpy real risk would feel.
+
+The third is execution. The strategy results assume fills at the 2-hour VWAP, which is a useful benchmark but not a guaranteed tradeable price. They also leave out slippage, queue position, and the uneven fill dynamics of patient maker orders. Add in the fact that the sample excludes cancelled, delisted, and inactive contracts, and the safest way to read the backtests is as evidence of persistent mispricing — not as a turnkey estimate of what a live strategy would have earned dollar for dollar.
 
 ## Conclusion
 
-Kalshi's mention markets exhibit systematic miscalibration that varies meaningfully by category. The dominant pattern is a longshot bias: low-probability contracts overestimate the likelihood of a mention, creating persistent value on the NO side. This bias survives after accounting for Kalshi's taker fee schedule, which conveniently charges less at the probability extremes where the mispricing is largest.
+The cleanest way to put the result is this: mention markets are not broken, but they are not evenly efficient either. Prices do move toward fair probabilities as events approach. The problem is that some categories get there much faster than others, and the remaining mistakes are not randomly scattered across the probability range. The dominant error is still longshot bias. Low-probability mention contracts are too expensive, which means the NO side is systematically cheaper than it should be even after fees.
 
-The finding that Politicians -- the highest-volume category -- also shows the best calibration suggests that liquidity and participation depth contribute to price accuracy, consistent with the broader evidence that thin markets and weak participation undermine prediction market forecasts (Wolfers & Zitzewitz, 2004; Arrow et al., 2008) and with Bürgi, Deng, and Whelan's (2026) finding that Kalshi's pricing bias has been diminishing as the market matures and volume grows. Conversely, niche categories with fewer participants and less predictable content (Entertainment, Finance) show larger deviations from fair pricing.
+What matters most in the cross-category view is that the pattern is structural. Politicians — the largest category — is also the best calibrated, which is exactly what one would expect if repeated participation, stronger base rates, and deeper liquidity improve price quality. Smaller or structurally messier categories such as Entertainment and Finance drift further from fair value. In other words, the market is learning, but it is learning unevenly. Some formats get disciplined quickly. Others stay noisy for longer than they should.
 
-Whether these patterns represent genuine alpha or an artifact of in-sample measurement remains an open question. The fact that the same favorite–longshot structure appears both in our mention-market subset and in Bürgi, Deng, and Whelan's (2026) exchange-wide analysis suggests the bias is not an artifact of a single market type, though whether it survives as participation deepens remains to be seen. The calibration-over-time analysis shows that the market has been improving, with MAD declining over the sample period. Traders and researchers should monitor whether these edges persist as the market matures.
+That is probably the main takeaway. The interesting story here is not simply that Kalshi mention markets contain tradable errors. It is that the same contract design can produce very different calibration dynamics depending on the information environment around it. Whether that remaining gap amounts to durable alpha or just a temporary phase of market maturation is still an open question. But for now, there is enough error left in the system to be visible, interpretable, and in some categories, clearly worth paying attention to.
 
 ## References
 
-Arrow, K.J., Forsythe, R., Gorham, M., et al. (2008). "The Promise of Prediction Markets." *Science*, 320(5878), 877–878.
+Arrow, K.J., Forsythe, R., Gorham, M., Hahn, R., Hanson, R., et al. (2008). "The Promise of Prediction Markets." Science, 320(5878), 877–878. https://doi.org/10.1126/science.1157679
 
-Brown, A., Reade, J. J., and Vaughan-Williams, L. (2019). "When Are Prediction Market Prices Most Informative?" *International Journal of Forecasting*, 35(1), 420–428.
+Barbosa, L.F. (2026). mention-analysis [Computer software]. GitHub. https://github.com/LuizFelipeBarbosa/mention-analysis
 
-Bürgi, C., Deng, W., and Whelan, K. (2025). "Makers and Takers: The Economics of the Kalshi Prediction Market." CEPR Discussion Paper No. 20631; CESifo Working Paper No. 12122.
+Brown, A., Reade, J.J., & Vaughan Williams, L. (2019). "When Are Prediction Market Prices Most Informative?" International Journal of Forecasting, 35(1), 420–428. https://doi.org/10.1016/j.ijforecast.2018.07.012
 
-Kahneman, D. and Tversky, A. (1979). "Prospect Theory: An Analysis of Decision under Risk." *Econometrica*, 47(2), 263–291.
+Bürgi, C., Deng, W., & Whelan, K. (2025). "Makers and Takers: The Economics of the Kalshi Prediction Market." CEPR Discussion Paper No. 20631; CESifo Working Paper No. 12122. https://ssrn.com/abstract=5502658
 
-Page, L. and Clemen, R.T. (2013). "Do Prediction Markets Produce Well-Calibrated Probability Forecasts?" *The Economic Journal*, 123(568), 491–513.
+Kahneman, D. & Tversky, A. (1979). "Prospect Theory: An Analysis of Decision under Risk." Econometrica, 47(2), 263–291. https://doi.org/10.2307/1914185
 
-Snowberg, E. and Wolfers, J. (2010). "Explaining the Favorite–Long Shot Bias: Is it Risk-Love or Misperceptions?" *Journal of Political Economy*, 118(4), 723–746.
+Kalshi. (2026). "Fee Schedule." https://kalshi.com/docs/kalshi-fee-schedule.pdf
 
-Snowberg, E., Wolfers, J., and Zitzewitz, E. (2013). "Prediction Markets for Economic Forecasting." In *Handbook of Economic Forecasting*, Vol. 2, 657–687. Elsevier.
+Kalshi Help Center. "How is Kalshi regulated?" https://help.kalshi.com/en/articles/13823765-how-is-kalshi-regulated
 
-Whelan, K. (2024). "Risk Aversion and Favourite–Longshot Bias in a Competitive Fixed-Odds Betting Market." *Economica*, 91(361), 188–209.
+Kalshi Help Center. "Limit Orders." https://help.kalshi.com/en/articles/13823811-limit-orders
 
-Wolfers, J. and Zitzewitz, E. (2004). "Prediction Markets." *Journal of Economic Perspectives*, 18(2), 107–126.
+Page, L. & Clemen, R.T. (2013). "Do Prediction Markets Produce Well-Calibrated Probability Forecasts?" Economic Journal, 123(568), 491–513. https://doi.org/10.1111/j.1468-0297.2012.02561.x
 
-Wolfers, J. and Zitzewitz, E. (2006). "Interpreting Prediction Market Prices as Probabilities." NBER Working Paper No. 12200.
+Snowberg, E. & Wolfers, J. (2010). "Explaining the Favorite–Long Shot Bias: Is It Risk-Love or Misperceptions?" Journal of Political Economy, 118(4), 723–746. https://doi.org/10.1086/655844
 
-Barbosa, L. F. (2026). *mention-analysis* [Computer software]. GitHub. https://github.com/LuizFelipeBarbosa/mention-analysis
+Snowberg, E., Wolfers, J., & Zitzewitz, E. (2013). "Prediction Markets for Economic Forecasting." In Handbook of Economic Forecasting, Vol. 2, 657–687. Elsevier.
+
+Whelan, K. (2024). "Risk Aversion and Favourite–Longshot Bias in a Competitive Fixed-Odds Betting Market." Economica, 91(361), 188–209.
+
+Wolfers, J. & Zitzewitz, E. (2004). "Prediction Markets." Journal of Economic Perspectives, 18(2), 107–126. https://doi.org/10.1257/0895330041371321
+
+Wolfers, J. & Zitzewitz, E. (2006). "Interpreting Prediction Market Prices as Probabilities." NBER Working Paper No. 12200.
