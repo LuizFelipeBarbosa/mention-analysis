@@ -42,25 +42,32 @@ def plot_calibration_curve(
 ) -> plt.Axes:
     """Plot a single calibration curve (actual vs implied).
 
-    cal must have columns: midpoint, actual_yes_pct, n.
-    Midpoints in 0-100 scale; actual_yes_pct in 0-1 scale.
+    cal must have columns: mean_implied_pct, actual_yes_pct, n.
+    Probabilities are in 0-100 scale; actual_yes_pct is in 0-1 scale.
+    ``midpoint`` is used only as a backwards-compatible fallback for older
+    calibration tables.  A calibration plot should use the mean observed
+    price in each bucket, not the bucket midpoint.
     """
     if ax is None:
         _, ax = plt.subplots(figsize=(10, 6))
 
-    x = cal["midpoint"].values / 100
-    y = cal["actual_yes_pct"].values
+    implied_col = "mean_implied_pct" if "mean_implied_pct" in cal else "midpoint"
+    valid = cal[cal["n"] > 0].copy()
+    valid = valid.dropna(subset=[implied_col, "actual_yes_pct"])
+    valid = valid.sort_values(implied_col)
+    x = valid[implied_col].values / 100
+    y = valid["actual_yes_pct"].values
 
     # Perfect calibration
     ax.plot([0, 1], [0, 1], "--", color=C_GRAY, linewidth=1.5, label="Perfect calibration")
     ax.plot(x, y, f"{marker}-", color=color, linewidth=2.5, markersize=8, label=label)
 
     if annotate_n:
-        for _, row in cal.iterrows():
+        for _, row in valid.iterrows():
             if row["n"] > 0:
                 ax.annotate(
                     f'n={int(row["n"])}',
-                    (row["midpoint"] / 100, row["actual_yes_pct"]),
+                    (row[implied_col] / 100, row["actual_yes_pct"]),
                     textcoords="offset points",
                     xytext=(0, 12),
                     fontsize=8,
@@ -84,43 +91,36 @@ def plot_multi_horizon_calibration(
     annotate_2h: bool = True,
 ) -> plt.Figure:
     """Plot calibration curves for multiple time horizons on a single axes."""
-    n_bins = int(100 / bin_size)
-    x_bins = np.arange(n_bins)
-    ideal = np.linspace(bin_size / 2, 100 - bin_size / 2, n_bins)
-
     cmap = plt.get_cmap("viridis_r")
     colors = [cmap(i) for i in np.linspace(0.1, 0.9, len(intervals))]
 
     figw = 14 if bin_size == 1 else 10
     fig, ax = plt.subplots(figsize=(figw, 6))
-    ax.plot(x_bins, ideal, color="black", linestyle="--", linewidth=1.5, label="Perfect Calibration")
-
-    prob_labels = cal_by_time[intervals[0]]["prob_bucket"].values
+    ax.plot([0, 100], [0, 100], color="black", linestyle="--", linewidth=1.5,
+            label="Perfect calibration")
 
     for j, interval in enumerate(intervals):
         cal = cal_by_time[interval]
-        y = cal["actual_yes_pct"].fillna(np.nan) * 100
+        implied_col = "mean_implied_pct" if "mean_implied_pct" in cal else "midpoint"
+        valid = cal[(cal["n"] > 0)].dropna(subset=[implied_col, "actual_yes_pct"])
+        valid = valid.sort_values(implied_col)
+        x = valid[implied_col].to_numpy()
+        y = valid["actual_yes_pct"].to_numpy() * 100
         marker = "" if bin_size == 1 else "o"
         lw = 1.2 if bin_size == 1 else 2
-        ax.plot(x_bins, y, marker=marker, color=colors[j], linewidth=lw, label=f"{interval} before Close")
+        ax.plot(x, y, marker=marker, color=colors[j], linewidth=lw,
+                label=f"{interval} before final recorded trade")
 
         if annotate_2h and interval == "2h" and bin_size != 1:
-            for k, val in enumerate(y):
-                if not np.isnan(val):
-                    n_count = cal.iloc[k]["n"]
-                    if n_count > 0:
-                        ax.text(x_bins[k], val + 3, f"n={n_count}", ha="center", va="bottom", fontsize=8)
-
-    if bin_size == 1:
-        tick_pos = np.arange(0, n_bins, 10)
-        ax.set_xticks(tick_pos)
-        ax.set_xticklabels([prob_labels[i] for i in tick_pos], rotation=45, ha="right")
-    else:
-        ax.set_xticks(x_bins)
-        ax.set_xticklabels(prob_labels, rotation=45, ha="right")
+            for _, row in valid.iterrows():
+                ax.text(row[implied_col], row["actual_yes_pct"] * 100 + 3,
+                        f"n={int(row['n'])}", ha="center", va="bottom", fontsize=8)
 
     ax.set_ylim(-5, 110)
-    ax.set_xlabel(f"Market Implied Probability ({bin_size}¢ buckets)")
+    ax.set_xlim(0, 100)
+    ax.set_xticks(np.arange(0, 101, 10))
+    ax.set_xticklabels([f"{t}%" for t in range(0, 101, 10)])
+    ax.set_xlabel(f"Mean implied probability ({bin_size}¢ buckets)")
     ax.set_ylabel("Actual % Resolved 'Yes'")
     ax.set_title(title)
     ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1))
@@ -144,40 +144,34 @@ def plot_faceted_calibration(
 
     for i, bs in enumerate(bin_sizes):
         ax = axes[i]
-        n_bins = int(100 / bs)
-        x_bins = np.arange(n_bins)
-        ideal = np.linspace(bs / 2, 100 - bs / 2, n_bins)
-
         cmap = plt.get_cmap("viridis_r")
         colors = [cmap(v) for v in np.linspace(0.1, 0.9, len(intervals))]
 
-        ax.plot(x_bins, ideal, color="black", linestyle="--", linewidth=1.5, label="Perfect Calibration")
+        ax.plot([0, 100], [0, 100], color="black", linestyle="--", linewidth=1.5,
+                label="Perfect calibration")
 
         for j, interval in enumerate(intervals):
             col = f"vwap_{interval}"
             cal = calibration_buckets(group_df, col, bin_size=bs)
-            y = cal["actual_yes_pct"].fillna(np.nan) * 100
+            implied_col = "mean_implied_pct" if "mean_implied_pct" in cal else "midpoint"
+            valid = cal[cal["n"] > 0].dropna(subset=[implied_col, "actual_yes_pct"])
+            valid = valid.sort_values(implied_col)
+            x = valid[implied_col].to_numpy()
+            y = valid["actual_yes_pct"].to_numpy() * 100
             marker = "" if bs == 1 else "o"
             lw = 1.2 if bs == 1 else 2
-            ax.plot(x_bins, y, marker=marker, color=colors[j], linewidth=lw, label=f"{interval} before Close")
+            ax.plot(x, y, marker=marker, color=colors[j], linewidth=lw,
+                    label=f"{interval} before final recorded trade")
 
             if interval == "2h" and bs != 1:
-                for k, val in enumerate(y):
-                    if not np.isnan(val):
-                        n_count = cal.iloc[k]["n"]
-                        if n_count > 0:
-                            ax.text(x_bins[k], val + 3, f"n={n_count}", ha="center", va="bottom", fontsize=8)
-
-        prob_labels = cal["prob_bucket"].values
-        if bs == 1:
-            tick_pos = np.arange(0, n_bins, 10)
-            ax.set_xticks(tick_pos)
-            ax.set_xticklabels([prob_labels[p] for p in tick_pos], rotation=45, ha="right")
-        else:
-            ax.set_xticks(x_bins)
-            ax.set_xticklabels(prob_labels, rotation=45, ha="right")
+                for _, row in valid.iterrows():
+                    ax.text(row[implied_col], row["actual_yes_pct"] * 100 + 3,
+                            f"n={int(row['n'])}", ha="center", va="bottom", fontsize=8)
 
         ax.set_ylim(-5, 110)
+        ax.set_xlim(0, 100)
+        ax.set_xticks(np.arange(0, 101, 10))
+        ax.set_xticklabels([f"{t}%" for t in range(0, 101, 10)])
         ax.set_title(f"{bs}¢ Buckets", fontsize=12)
         ax.set_ylabel("Actual % Resolved 'Yes'", fontsize=10)
         ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1), fontsize=9)
@@ -207,9 +201,6 @@ def plot_calibration_panel(
     """
     from src.metrics import calibration_buckets  # avoid circular import
 
-    n_bins = int(100 / bin_size)
-    midpoints = np.linspace(bin_size / 2, 100 - bin_size / 2, n_bins)
-
     cmap = plt.get_cmap("viridis_r")
     colors = [cmap(v) for v in np.linspace(0.1, 0.9, len(intervals))]
 
@@ -222,21 +213,22 @@ def plot_calibration_panel(
     for j, interval in enumerate(intervals):
         col = f"vwap_{interval}"
         cal = calibration_buckets(group_df, col, bin_size=bin_size)
-        y = cal["actual_yes_pct"].fillna(np.nan) * 100
+        implied_col = "mean_implied_pct" if "mean_implied_pct" in cal else "midpoint"
+        valid = cal[cal["n"] > 0].dropna(subset=[implied_col, "actual_yes_pct"])
+        valid = valid.sort_values(implied_col)
+        x = valid[implied_col].to_numpy()
+        y = valid["actual_yes_pct"].to_numpy() * 100
         marker = "" if bin_size == 1 else "o"
         lw = 1.2 if bin_size == 1 else 2
-        ax.plot(midpoints, y, marker=marker, color=colors[j], linewidth=lw,
+        ax.plot(x, y, marker=marker, color=colors[j], linewidth=lw,
                 label=f"{interval} VWAP", zorder=2)
 
         # Annotate sample sizes on the 2h line for coarser buckets
         if interval == "2h" and bin_size >= 5:
-            for k, val in enumerate(y):
-                if not np.isnan(val):
-                    n_count = cal.iloc[k]["n"]
-                    if n_count > 0:
-                        ax.text(midpoints[k], val + 2.5, f"n={n_count}",
-                                ha="center", va="bottom", fontsize=8,
-                                color=C_GRAY)
+            for _, row in valid.iterrows():
+                ax.text(row[implied_col], row["actual_yes_pct"] * 100 + 2.5,
+                        f"n={int(row['n'])}", ha="center", va="bottom",
+                        fontsize=8, color=C_GRAY)
 
     # Clean percentage axes
     ax.set_xlim(0, 100)
@@ -274,9 +266,8 @@ def plot_mad_summary(
     ax.set_xticks(x)
     ax.set_xticklabels(intervals)
     ax.set_ylabel("Mean Absolute Deviation (%)")
-    ax.set_xlabel("Time Before Market Close")
-    ax.set_title("Calibration Bias Reduction Near Close (Mean Absolute Deviation)")
-    ax.invert_xaxis()
+    ax.set_xlabel("Time before final recorded trade")
+    ax.set_title("Descriptive calibration error by VWAP lookback")
     ax.legend()
     ax.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
@@ -288,7 +279,12 @@ def plot_vwap_traces(
     title: str = "VWAP Traces",
     intervals: list[str] | None = None,
 ) -> plt.Figure:
-    """Spaghetti plot of per-contract VWAP traces, colored by outcome."""
+    """Plot per-contract VWAP paths, colored by outcome.
+
+    Each path is indexed by a lookback from that market's final recorded
+    trade.  This is a diagnostic view; it is not an event-aligned trajectory
+    and paths can have different available horizons.
+    """
     if intervals is None:
         intervals = ["7d", "3d", "1d", "6h", "2h", "1h", "30m", "10m"]
     vwap_cols = [f"vwap_{i}" for i in intervals]
@@ -309,7 +305,7 @@ def plot_vwap_traces(
     ax.set_xticks(x)
     ax.set_xticklabels(intervals)
     ax.set_ylabel("VWAP (Cents)")
-    ax.set_xlabel("Time Before Market Close")
+    ax.set_xlabel("Time before final recorded trade")
     ax.set_ylim(-5, 105)
     ax.set_title(title)
 
