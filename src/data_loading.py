@@ -11,6 +11,34 @@ DATA_ROOT = Path(__file__).parent.parent / "data"
 TRADES_GLOB = str(DATA_ROOT / "trades" / "*.parquet")
 MARKETS_GLOB = str(DATA_ROOT / "markets" / "*.parquet")
 
+
+def _parquet_source(glob_pattern: str) -> str:
+    """Return a DuckDB parquet source while ignoring macOS sidecar files.
+
+    T7 snapshots copied from macOS can contain ``._*.parquet`` AppleDouble
+    files alongside the real parquet files.  DuckDB correctly rejects those
+    sidecars as invalid parquet, so expand the glob in Python and pass an
+    explicit file list to DuckDB.  If the pattern does not contain a glob,
+    leave it unchanged so callers can still provide a single file path.
+    """
+    pattern = Path(glob_pattern)
+    if not any(char in glob_pattern for char in "*?["):
+        return "'" + glob_pattern.replace("'", "''") + "'"
+
+    files = sorted(
+        path for path in pattern.parent.glob(pattern.name)
+        if path.is_file() and not path.name.startswith("._")
+    )
+    if not files:
+        # Preserve DuckDB's useful missing-file diagnostic.
+        return "'" + glob_pattern.replace("'", "''") + "'"
+
+    quoted = ", ".join(
+        "'" + str(path).replace("'", "''") + "'" for path in files
+    )
+    return f"[{quoted}]"
+
+
 # ---------------------------------------------------------------------------
 # VWAP intervals used throughout the analysis
 # ---------------------------------------------------------------------------
@@ -85,6 +113,8 @@ def load_mention_markets(
         trade."
     """
     con = duckdb.connect()
+    trades_source = _parquet_source(trades_glob)
+    markets_source = _parquet_source(markets_glob)
 
     series_clause = ""
     if series_filter:
@@ -100,7 +130,7 @@ def load_mention_markets(
             result,
             close_time,
             series
-        FROM '{markets_glob}'
+        FROM read_parquet({markets_source}, union_by_name=true)
         WHERE result IN ('yes', 'no')
           {series_clause}
     ),
@@ -112,7 +142,7 @@ def load_mention_markets(
         SELECT
             t.ticker,
             MAX(t.created_time) AS last_trade_time
-        FROM read_parquet('{trades_glob}', union_by_name=true) t
+        FROM read_parquet({trades_source}, union_by_name=true) t
         INNER JOIN market_base m ON t.ticker = m.ticker
         WHERE ({_YES_PRICE_EXPR}) IS NOT NULL
           AND ({_COUNT_EXPR}) IS NOT NULL
@@ -124,7 +154,7 @@ def load_mention_markets(
             t.ticker,
             {_vwap_columns("lt.last_trade_time")},
             SUM({_COUNT_EXPR}) AS total_volume
-        FROM read_parquet('{trades_glob}', union_by_name=true) t
+        FROM read_parquet({trades_source}, union_by_name=true) t
         INNER JOIN market_base m ON t.ticker = m.ticker
         INNER JOIN last_trade lt ON t.ticker = lt.ticker
         WHERE ({_YES_PRICE_EXPR}) IS NOT NULL
@@ -168,10 +198,12 @@ def load_trade_positions(
 ) -> pd.DataFrame:
     """Load both sides of every trade for calibration-over-time analysis.
 
-    Returns columns: created_time, series, price, won.
+    Returns columns: created_time, ticker, series, price, won.
     price is in cents (1-99).
     """
     con = duckdb.connect()
+    trades_source = _parquet_source(trades_glob)
+    markets_source = _parquet_source(markets_glob)
 
     series_clause = ""
     if series_filter:
@@ -184,7 +216,7 @@ def load_trade_positions(
             ticker,
             result,
             series
-        FROM '{markets_glob}'
+        FROM read_parquet({markets_source}, union_by_name=true)
         WHERE result IN ('yes', 'no')
           {series_clause}
     ),
@@ -196,7 +228,7 @@ def load_trade_positions(
             {_YES_PRICE_EXPR} AS _yp,
             (100.0 - {_YES_PRICE_EXPR}) AS _np,
             {_COUNT_EXPR} AS _cnt
-        FROM read_parquet('{trades_glob}', union_by_name=true) t
+        FROM read_parquet({trades_source}, union_by_name=true) t
         WHERE {_YES_PRICE_EXPR} IS NOT NULL
           AND {_COUNT_EXPR} IS NOT NULL
           AND {_COUNT_EXPR} > 0
@@ -205,6 +237,7 @@ def load_trade_positions(
         -- Taker side
         SELECT
             t.created_time,
+            m.ticker,
             m.series,
             CASE WHEN t.taker_side = 'yes' THEN t._yp
                  ELSE t._np END AS price,
@@ -218,6 +251,7 @@ def load_trade_positions(
         -- Counter-party side
         SELECT
             t.created_time,
+            m.ticker,
             m.series,
             CASE WHEN t.taker_side = 'yes' THEN t._np
                  ELSE t._yp END AS price,
@@ -226,7 +260,7 @@ def load_trade_positions(
         FROM raw_trades t
         INNER JOIN resolved_markets m ON t.ticker = m.ticker
     )
-    SELECT created_time, series, price, won
+    SELECT created_time, ticker, series, price, won
     FROM trade_positions
     WHERE price >= 1 AND price <= 99
     ORDER BY created_time
@@ -241,6 +275,7 @@ def load_trade_positions(
 def load_trades(trades_glob: str = TRADES_GLOB) -> pd.DataFrame:
     """Load raw trades from parquet. Returns yes_price in cents."""
     con = duckdb.connect()
+    trades_source = _parquet_source(trades_glob)
     sql = f"""
     SELECT
         trade_id,
@@ -251,7 +286,7 @@ def load_trades(trades_glob: str = TRADES_GLOB) -> pd.DataFrame:
         COALESCE(no_price_dollars * 100.0, no_price) AS no_price,
         COALESCE(count_fp, count) AS count,
         taker_side
-    FROM read_parquet('{trades_glob}', union_by_name=true)
+    FROM read_parquet({trades_source}, union_by_name=true)
     WHERE COALESCE(yes_price_dollars, yes_price / 100.0) IS NOT NULL
       AND COALESCE(count_fp, count) IS NOT NULL
       AND COALESCE(count_fp, count) > 0
@@ -262,7 +297,10 @@ def load_trades(trades_glob: str = TRADES_GLOB) -> pd.DataFrame:
 def load_markets(markets_glob: str = MARKETS_GLOB) -> pd.DataFrame:
     """Load raw markets from parquet."""
     con = duckdb.connect()
-    return con.execute(f"SELECT * FROM '{markets_glob}'").df()
+    markets_source = _parquet_source(markets_glob)
+    return con.execute(
+        f"SELECT * FROM read_parquet({markets_source}, union_by_name=true)"
+    ).df()
 
 
 def load_mention_data(

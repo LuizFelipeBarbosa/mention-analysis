@@ -99,8 +99,23 @@ POLITICAL_SERIES = [s for s in _POLITICIANS]
 
 
 def get_category(series: str) -> str:
-    """Map a series name to its mention category."""
-    return CATEGORY_MAP.get(series, "Other")
+    """Map a series name or ticker prefix to its mention category.
+
+    The T7 market metadata is not consistent across snapshots: some rows use
+    the canonical series (for example ``KXTRUMPMENTION``), while others use a
+    metadata bucket such as ``A`` or ``B``.  Passing the ticker lets callers
+    retain the stable category encoded in its prefix.
+    """
+    value = str(series).upper()
+    if value in CATEGORY_MAP:
+        return CATEGORY_MAP[value]
+    prefixes = sorted(
+        CATEGORY_MAP.items(), key=lambda item: len(item[0]), reverse=True
+    )
+    for prefix, category in prefixes:
+        if value.startswith(prefix):
+            return category
+    return "Other"
 
 
 def assign_political_subgroup(series: str) -> str:

@@ -41,7 +41,10 @@ def calibration_buckets(
 
     Returns
     -------
-    DataFrame with columns: prob_bucket, midpoint, n, actual_yes_pct.
+    DataFrame with columns: prob_bucket, midpoint, mean_implied_pct, n,
+    actual_yes_pct. ``midpoint`` is retained as a display label; calibration
+    error should use ``mean_implied_pct`` because prices are not uniformly
+    distributed within a bucket.
     """
     n_bins = int(100 / bin_size)
     bins = np.linspace(0, 100, n_bins + 1)
@@ -53,24 +56,34 @@ def calibration_buckets(
 
     cal = (
         tmp.groupby("_bucket", observed=False)
-        .agg(n=(prob_col, "count"), actual_yes_count=(actual_col, "sum"))
+        .agg(
+            n=(prob_col, "count"),
+            actual_yes_count=(actual_col, "sum"),
+            mean_implied_pct=(prob_col, "mean"),
+        )
         .reset_index()
     )
     cal.rename(columns={"_bucket": "prob_bucket"}, inplace=True)
     cal["midpoint"] = midpoints
     cal["actual_yes_pct"] = np.where(cal["n"] > 0, cal["actual_yes_count"] / cal["n"], np.nan)
+    # The implied probability is on the same 0-100 scale as ``midpoint``.
+    # The midpoint is useful for chart labels but can bias MAD when a bucket
+    # has most of its observations near one edge.
     return cal
 
 
 def compute_mad(cal: pd.DataFrame, min_n: int = 5) -> float:
     """Mean Absolute Deviation from perfect calibration.
 
-    Uses only buckets with n >= min_n.
+    Uses only buckets with n >= min_n. The within-bucket mean implied
+    probability is preferred over the fixed midpoint; older tables without
+    that column continue to use ``midpoint`` for backwards compatibility.
     """
     valid = cal[cal["n"] >= min_n].copy()
     if valid.empty:
         return np.nan
-    valid["abs_err"] = np.abs(valid["actual_yes_pct"] * 100 - valid["midpoint"])
+    implied = valid["mean_implied_pct"] if "mean_implied_pct" in valid else valid["midpoint"]
+    valid["abs_err"] = np.abs(valid["actual_yes_pct"] * 100 - implied)
     return float(valid["abs_err"].mean())
 
 

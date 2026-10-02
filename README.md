@@ -2,6 +2,16 @@
 
 Calibration analysis and trading strategy evaluation for Kalshi mention markets — binary prediction contracts that settle based on whether a specific topic, person, or phrase is mentioned during a scheduled event.
 
+## Validated consolidated audit
+
+The original notebooks are retained as historical snapshots. The current executed audit consolidates their logic, validates the essay claims against both T7 snapshots, corrects bucket and aggregation issues, and reports the newer Trump-specific evidence:
+
+- **[Consolidated validation notebook](output/mention-markets-validation-consolidated.ipynb)** — executable source and outputs.
+- **[Consolidated Markdown notebook](output/mention-markets-validation-consolidated.md)** — reviewable rendered version.
+- **[Validation report](output/mention-markets-validation-report.md)** — claim ledger, severity-ranked issues, and repair plan.
+
+The public-data refresh helper is [scripts/refresh_trump_audit.py](scripts/refresh_trump_audit.py). It writes a new timestamped T7 snapshot, records API cutoffs and hashes, reconciles the existing tape, and never places orders.
+
 ## Notebooks
 
 | Notebook | Focus |
@@ -19,6 +29,8 @@ data -> /Volumes/T7/mention-markets
 └── markets/   # Per-series parquet files (market metadata + outcomes)
 ```
 
+The counts above describe the historical essay snapshot. Current counts are snapshot-dependent; the consolidated validation artifacts record the exact T7/API cutoff and denominators for each run.
+
 **Trade columns:** `trade_id`, `ticker`, `series`, `created_time` (UTC), `yes_price` (int cents 1–99), `no_price`, `count`, `taker_side`
 
 **Market columns:** `ticker`, `event_ticker`, `market_type`, `title`, `status`, `result`, `close_time`, `volume`, `open_interest`, etc.
@@ -28,7 +40,7 @@ data -> /Volumes/T7/mention-markets
 | Module | Purpose |
 |--------|---------|
 | `data_loading.py` | DuckDB-based data loading with VWAP computation at 8 time horizons |
-| `mention_filters.py` | Category mapping (series → category) and political subgroup assignment |
+| `mention_filters.py` | Category mapping (ticker prefix/series → category) and political subgroup assignment |
 | `metrics.py` | Calibration buckets, MAD, strategy profitability, Kalshi fee calculation |
 | `plotting.py` | Matplotlib chart helpers (calibration curves, heatmaps, VWAP traces, etc.) |
 
@@ -41,9 +53,9 @@ data -> /Volumes/T7/mention-markets
 
 ## Key Methodology
 
-- **VWAP snapshots** at 7d, 3d, 1d, 6h, 2h, 1h, 30m, 10m before close
-- **Calibration curves**: actual win rate vs implied probability in 1/5/10-cent buckets
-- **MAD** (Mean Absolute Deviation) as the calibration metric
+- **Cumulative pre-cutoff VWAP snapshots** at 7d, 3d, 1d, 6h, 2h, 1h, 30m, 10m before the final recorded trade
+- **Calibration curves**: actual YES rate vs within-bucket mean implied probability in 1/5/10-cent buckets
+- **MAD** (Mean Absolute Deviation) from within-bucket mean implied probability; event-cluster uncertainty is required for inference
 - **Strategy profitability**: buy YES when price > threshold; gross and net-of-fees returns
 - **Kalshi fee**: `ceil(0.07 × p × (100 − p) / 100)` cents per contract
 
